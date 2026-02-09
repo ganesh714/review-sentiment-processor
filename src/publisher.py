@@ -1,34 +1,52 @@
-import pika
 import json
-import os
 import logging
+import pika
 
 logger = logging.getLogger(__name__)
 
 class EventPublisher:
-    def __init__(self, channel=None):
-        self.channel = channel
-        self.output_queue = 'review_processed'
-        if self.channel:
-            self.channel.queue_declare(queue=self.output_queue, durable=True)
-
-    def publish(self, review_data):
+    def __init__(self, channel, exchange_name='review_events', routing_key='review.processed'):
         """
-        Publishes the processed review data to the output queue.
+        Initializes the EventPublisher.
+        
+        Args:
+            channel: The RabbitMQ channel to use for publishing.
+            exchange_name (str): The name of the exchange to publish to.
+            routing_key (str): The routing key for the messages.
+        """
+        self.channel = channel
+        self.exchange_name = exchange_name
+        self.routing_key = routing_key
+        
+        # Declare the exchange to ensure it exists
+        try:
+            self.channel.exchange_declare(exchange=self.exchange_name, exchange_type='topic', durable=True)
+            logger.info(f"Exchange '{self.exchange_name}' declared successfully.")
+        except Exception as e:
+            logger.error(f"Failed to declare exchange '{self.exchange_name}': {e}")
+            raise
+
+    def publish(self, event_data):
+        """
+        Publishes an event to the configured exchange.
+
+        Args:
+            event_data (dict): The dictionary containing the event data.
         """
         try:
-            if not self.channel:
-                logger.error("Publisher channel is not initialized.")
-                return
-
+            message_body = json.dumps(event_data)
+            
             self.channel.basic_publish(
-                exchange='',
-                routing_key=self.output_queue,
-                body=json.dumps(review_data),
+                exchange=self.exchange_name,
+                routing_key=self.routing_key,
+                body=message_body,
                 properties=pika.BasicProperties(
-                    delivery_mode=2,  # Persistent message
+                    delivery_mode=2,  # Make message persistent
+                    content_type='application/json'
                 )
             )
-            logger.info(f"Published ReviewProcessed event for {review_data.get('reviewId')}")
+            logger.info(f"Published event to '{self.exchange_name}' with key '{self.routing_key}': {event_data.get('reviewId', 'unknown')}")
         except Exception as e:
-            logger.error(f"Failed to publish event for {review_data.get('reviewId')}: {e}")
+            logger.error(f"Failed to publish event: {e}")
+            # Depending on requirements, we might want to re-raise this to trigger a retry in the consumer
+            raise
