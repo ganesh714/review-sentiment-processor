@@ -64,11 +64,15 @@ You can use the included `test_publisher.py` script to simulate events.
     *Check logs to see "Failed to decode JSON. Rejecting (to DLQ)."*
 
 ### Unit Tests
-Run the unit tests:
+You can run the unit tests without any external dependencies (RabbitMQ/DB not required):
+```bash
+python tests/test_consumer_mocked_v2.py
+```
+
+To run standard discovery (requires dependencies installed):
 ```bash
 python -m unittest discover tests
 ```
-
 ## Configuration
 - **RabbitMQ**: `localhost:5672` (Mgmt: 15672)
 - **Postgres**: `localhost:5432`
