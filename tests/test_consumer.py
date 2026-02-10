@@ -107,6 +107,10 @@ class TestConsumerLogicV2(unittest.TestCase):
         
         body = json.dumps({
             "reviewId": "rv_dup",
+            "productId": "prod_1",
+            "userId": "user_1",
+            "rating": 5,
+            "comment": "Duplicate review"
         }).encode('utf-8')
         
         src.consumer.process_message(self.mock_ch, self.mock_method, self.mock_properties, body, self.mock_publisher)
@@ -120,7 +124,73 @@ class TestConsumerLogicV2(unittest.TestCase):
         src.consumer.process_message(self.mock_ch, self.mock_method, self.mock_properties, body, self.mock_publisher)
         
         # Should reject
+        # Should reject
         self.mock_ch.basic_reject.assert_called_with(delivery_tag=self.mock_method.delivery_tag, requeue=False)
+
+    def test_missing_fields(self):
+        body = json.dumps({
+            "reviewId": "rv_missing",
+            # Missing productId, userId, rating
+            "comment": "Incomplete payload"
+        }).encode('utf-8')
+        
+        src.consumer.process_message(self.mock_ch, self.mock_method, self.mock_properties, body, self.mock_publisher)
+        
+        # Should reject to DLQ
+        self.mock_ch.basic_reject.assert_called_with(delivery_tag=self.mock_method.delivery_tag, requeue=False)
+
+    def test_missing_critical_fields(self):
+        # Test missing reviewId
+        body_no_id = json.dumps({
+            "productId": "prod_1",
+            "userId": "user_1",
+            "rating": 5,
+            "comment": "No ID here"
+        }).encode('utf-8')
+        
+        src.consumer.process_message(self.mock_ch, self.mock_method, self.mock_properties, body_no_id, self.mock_publisher)
+        self.mock_ch.basic_reject.assert_called_with(delivery_tag=self.mock_method.delivery_tag, requeue=False)
+        
+        # Reset mocks
+        self.mock_ch.reset_mock()
+        
+        # Test missing comment
+        body_no_comment = json.dumps({
+            "reviewId": "rv_no_comment",
+            "productId": "prod_1",
+            "userId": "user_1",
+            "rating": 5
+        }).encode('utf-8')
+        
+        src.consumer.process_message(self.mock_ch, self.mock_method, self.mock_properties, body_no_comment, self.mock_publisher)
+        self.mock_ch.basic_reject.assert_called_with(delivery_tag=self.mock_method.delivery_tag, requeue=False)
+
+    def test_integrity_error(self):
+        """Test that IntegrityError triggers an Ack (treating as duplicate)."""
+        mock_session = MagicMock()
+        mock_database.get_db_session.return_value = iter([mock_session])
+        
+        # Database query returns None (so it tries to insert)
+        mock_session.query.return_value.filter_by.return_value.first.return_value = None
+        
+        # Simulate IntegrityError on commit
+        mock_session.commit.side_effect = src.sqlalchemy.exc.IntegrityError(None, None, None)
+        
+        body = json.dumps({
+            "reviewId": "rv_integrity_fail",
+            "productId": "prod_1",
+            "userId": "user_1",
+            "rating": 5,
+            "comment": "Integrity Error Test"
+        }).encode('utf-8')
+        
+        src.consumer.process_message(self.mock_ch, self.mock_method, self.mock_properties, body, self.mock_publisher)
+        
+        # Should Ack (treated as duplicate)
+        self.mock_ch.basic_ack.assert_called_with(delivery_tag=self.mock_method.delivery_tag)
+        # Should NOT Nack/Requeue
+        self.mock_ch.basic_nack.assert_not_called()
+
 
 if __name__ == '__main__':
     unittest.main()
