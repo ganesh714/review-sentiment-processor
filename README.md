@@ -66,7 +66,7 @@ You can use the included `test_publisher.py` script to simulate events.
 ### Unit Tests
 You can run the unit tests without any external dependencies (RabbitMQ/DB not required):
 ```bash
-python tests/test_consumer_mocked_v2.py
+python tests/test_consumer.py
 ```
 
 To run standard discovery (requires dependencies installed):
