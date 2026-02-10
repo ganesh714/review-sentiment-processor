@@ -6,7 +6,7 @@ A robust, containerized backend service that processes product reviews using an 
 - **Event-Driven**: Consumes reviews from RabbitMQ.
 - **Sentiment Analysis**: Analyzes review comments (Positive/Negative/Neutral).
 - **Data Persistence**: Stores enriched reviews in PostgreSQL.
-- **Reliability**: Implements Idempotency, Retries, and Dead Letter Queues (DLQ).
+- **Reliability**: Implements Idempotency, Input Validation, Retries, and Dead Letter Queues (DLQ).
 - **Observability**: Structured JSON logging.
 - **Containerized**: Fully Dockerized setup.
 
