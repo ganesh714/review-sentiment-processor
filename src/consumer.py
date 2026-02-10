@@ -21,6 +21,20 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Ensure TextBlob corpora is available
+try:
+    from textblob import TextBlob
+    TextBlob("test").sentiment
+except Exception:
+    logger.info("Downloading TextBlob corpora...")
+    import nltk
+    nltk.download('punkt')
+    nltk.download('brown')
+    nltk.download('names')
+    nltk.download('wordnet')
+    nltk.download('averaged_perceptron_tagger')
+    nltk.download('universal_tagset')
+
 # Configuration
 RABBITMQ_HOST = os.getenv('RABBITMQ_HOST', 'localhost')
 RABBITMQ_USER = os.getenv('RABBITMQ_USER', 'guest')
@@ -74,6 +88,14 @@ def process_message(ch, method, properties, body, publisher):
         
         logger.info(f"Received review: {review_id}")
 
+        # 0. Validation Check
+        required_fields = ['productId', 'userId', 'rating', 'reviewId', 'comment']
+        missing_fields = [field for field in required_fields if not data.get(field)]
+        if missing_fields:
+            logger.error(f"Invalid message: Missing fields {missing_fields} for review {review_id}. Rejecting (to DLQ).")
+            ch.basic_reject(delivery_tag=method.delivery_tag, requeue=False)
+            return
+
         # 1. Idempotency Check & DB Session
         session = next(get_db_session())
         existing_review = session.query(ProcessedReview).filter_by(review_id=review_id).first()
@@ -116,9 +138,9 @@ def process_message(ch, method, properties, body, publisher):
         # Reject without requeue triggers DLQ
         ch.basic_reject(delivery_tag=method.delivery_tag, requeue=False)
     except IntegrityError:
-        logger.error(f"Integrity Error for {review_id}. Concurrent write? Requeuing.")
+        logger.warning(f"Integrity Error for {review_id}. Review likely already exists. Treating as duplicate and Acking.")
         session.rollback()
-        ch.basic_nack(delivery_tag=method.delivery_tag, requeue=True)
+        ch.basic_ack(delivery_tag=method.delivery_tag)
     except Exception as e:
         logger.error(f"Error processing message {review_id}: {e}")
         # Retry logic: basic_nack with requeue=True will loop forever if persistent error. 
